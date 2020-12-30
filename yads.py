@@ -1,9 +1,11 @@
 import time
 import pickle
 import os
+import sys
 import json
 import threading
 
+from filelock import FileLock
 from exceptions import *
 
 
@@ -34,7 +36,8 @@ class yads:
         self.data_dict = {}
         self.file_path = file_path
         self.file = None
-        self.lock = threading.Lock()
+        self.data_thread_lock = threading.data_thread_lock()
+        self.file_process_lock = None
         self.initialize_data_store()
         
     def generate_file_path(self):
@@ -53,6 +56,7 @@ class yads:
         and the file is opened for writing in binary mode.
         if a file directory exists,it is opened for writing in binary
         mode and the data_dict is loaded in pickle file.
+        The file is locked so that other process cannot be executed.
         
         '''
         if self.file_path is None:
@@ -62,6 +66,12 @@ class yads:
             self.file = open(self.file_path, 'wb')
             if os.path.getsize(self.file_path) > 0:
                 self.data_dict = pickle.load(self.file)
+        self.file_process_lock= FileLock(self.file_path)
+        self.file_process_lock.acquire()
+        if not self.check_file_size():
+            print("given file has reached 1 gb limit,Terminating Program...")
+            sys.exit()
+
 
     def check_key_value_format(self, key, value, time_to_live):
         '''
@@ -117,9 +127,16 @@ class yads:
         :return: returns nothing
         '''
         self.check_key_value_format(key, value, time_to_live)
-        self.lock.acquire()
+        self.data_thread_lock.acquire()
         self.data_dict[key] = (self.get_expiration_time(time_to_live), value)
-        self.lock.release()
+        self.data_thread_lock.release()
+        if self.check_dict_size_within_limits:
+            print("key is created successfully")
+        else:
+            self.data_thread_lock.acquire()
+            self.data_dict.pop(key)
+            self.data_thread_lock.release()
+            print("key creation unsuccessful! size exceeds 1 gb")
 
     def read(self, key):
         '''
@@ -139,9 +156,9 @@ class yads:
             if the key got expired it raises an Exception
             
             '''
-            self.lock.acquire()
+            self.data_thread_lock.acquire()
             self.data_dict.pop(key)
-            self.lock.release()
+            self.data_thread_lock.release()
             raise KeyExpiredException
 
         return self.data_dict[key][1]
@@ -163,14 +180,27 @@ class yads:
             checks if the key does not expire,
             if the key got expired it raises an Exception.
             '''
-            self.lock.acquire()
+            self.data_thread_lock.acquire()
             self.data_dict.pop(key)
-            self.lock.release()
+            self.data_thread_lock.release()
             raise KeyExpiredException
 
-        self.lock.acquire()
+        self.data_thread_lock.acquire()
         self.data_dict.pop(key)
-        self.lock.release()
+        self.data_thread_lock.release()
+        print("key is deleted")
+
+    def check_dict_size_within_limits(self):                                                                      
+        if sys.getsizeof(self.data_dict) <= 1e+9:
+            return True
+        else:
+            return False 
+
+    def check_file_size(self):                                                                      
+        if os.path.getsize(self.file_path) <= 1e+9:
+            return True
+        else:
+            return False   
 
     def is_json(self, myjson):
         '''
@@ -197,4 +227,5 @@ class yads:
         writes the data to file and closes the file
         '''
         pickle.dump(self.data_dict, self.file)
+        self.file_process_lock.release()
         self.file.close()
