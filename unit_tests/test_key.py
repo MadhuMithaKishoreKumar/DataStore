@@ -8,8 +8,8 @@ from exceptions import *
 
 @pytest.fixture
 def tempfile_name():
-    temp_file = tempfile.NamedTemporaryFile(suffix=".txt", prefix="test_file")
-    return temp_file.name
+    fd, path = tempfile.mkstemp(suffix=".txt", prefix="test_file")
+    return path
 
 
 def test_invalid_key_format(tempfile_name):

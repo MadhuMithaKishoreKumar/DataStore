@@ -1,4 +1,5 @@
 import pytest
+import os
 from yads import yads
 import json
 import tempfile
@@ -7,8 +8,8 @@ from exceptions import *
 
 @pytest.fixture
 def tempfile_name():
-    temp_file = tempfile.NamedTemporaryFile(suffix=".txt", prefix="test_file")
-    return temp_file.name
+    fd, path = tempfile.mkstemp(suffix=".txt", prefix="test_file")
+    return path
 
 
 def test_key_value_creation_is_successful(tempfile_name):
