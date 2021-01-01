@@ -1,4 +1,5 @@
 # YADS - Yet Another Data Store! 
+This is an assignment for Freshworks.
 YADS is a library to implement a simple key-value data storage system. The data is persisted in binary format by using python's `pickle` library.
 
 ## Prerequisites
