@@ -26,26 +26,26 @@ class yads:
             * is_json
             * utf8len
     '''
-    
     def __init__(self, file_path=None):
         '''
         constructor
         :param file_path: file path
-        :return:
+        :return: returns nothing
         '''
         self.data_dict = {}
         self.file_path = file_path
         self.file = None
-        self.data_thread_lock = threading.data_thread_lock()
+        self.data_thread_lock = threading.Lock()
         self.file_process_lock = None
         self.initialize_data_store()
-        
+
     def generate_file_path(self):
         '''
         This is to build a file path 
-        :return: A new file path
+        :return: returns a new file path
         '''
-        new_file_path = os.getcwd() + "/datastore" + str(int(time.time())) + ".txt"
+        new_file_path = os.getcwd() + "/datastore" + str(int(
+            time.time())) + ".txt"
         print("Creating new file: " + new_file_path)
         return new_file_path
 
@@ -63,22 +63,24 @@ class yads:
             self.file_path = self.generate_file_path()
             self.file = open(self.file_path, 'wb')
         else:
-            self.file = open(self.file_path, 'wb')
+            self.temp_file = open(self.file_path, 'rb')
             if os.path.getsize(self.file_path) > 0:
-                self.data_dict = pickle.load(self.file)
-        self.file_process_lock= FileLock(self.file_path)
+                self.data_dict = pickle.load(self.temp_file)
+            self.temp_file.close()
+            self.file = open(self.file_path, 'wb')
+
+        self.file_process_lock = FileLock(self.file_path)
         self.file_process_lock.acquire()
         if not self.check_file_size():
             print("given file has reached 1 gb limit,Terminating Program...")
             sys.exit()
 
-
     def check_key_value_format(self, key, value, time_to_live):
         '''
         checks the format of key value
-        :param key:
-        :param value:
-        :param time_to_value:
+        :param key: example tina 
+        :param value:{}
+        :param time_to_value: example 100
         :return: returns nothing
         '''
         if key in self.data_dict:
@@ -87,24 +89,22 @@ class yads:
             the keyExistsException.
             '''
             raise KeyExistsException
-           
+
         if not isinstance(key, type("")) or len(key) > 32:
             '''
             Checks if key meets required conditions of being 
             a string and capped at 32 chars.
             '''
             raise KeyFormatException
-            
+
         if not self.is_json(value) or self.utf8len(value) > 160000:
             '''
             Checks if the size of the value exceeds 16 KB.
             '''
             raise ValueFormatException
 
-        if time_to_live is not None and (
-            not isinstance(
-                time_to_live,
-                int) or time_to_live <= 0):
+        if time_to_live is not None and (not isinstance(time_to_live, int)
+                                         or time_to_live <= 0):
             '''
             Checks the ttl whether it is in the expected format
             '''
@@ -112,26 +112,30 @@ class yads:
 
     def get_expiration_time(self, time_to_live):
         '''
-        :param time_to_live:
+        :param time_to_live: example 100
         :return: returns the time in which it should expire
         '''
+        if time_to_live is None:
+            return None
         return int(time.time()) + time_to_live - 1
 
     def create(self, key, value, time_to_live=None):
         '''
         This is used to create a key and to check the key value format,
         it make sure the property of thread safety
-        :param key:
-        :param value:
-        :param time_to_value:
+        :param key: example name
+        :param value: {}
+        :param time_to_value: example 100
         :return: returns nothing
         '''
         self.check_key_value_format(key, value, time_to_live)
         self.data_thread_lock.acquire()
         self.data_dict[key] = (self.get_expiration_time(time_to_live), value)
         self.data_thread_lock.release()
-        if self.check_dict_size_within_limits:
+
+        if self.check_dict_size_within_limits():
             print("key is created successfully")
+
         else:
             self.data_thread_lock.acquire()
             self.data_dict.pop(key)
@@ -141,7 +145,7 @@ class yads:
     def read(self, key):
         '''
         finds the key in the data store and displays the value.
-        :param:key
+        :param key: example name
         :return:returns ttl and value
         '''
         if key not in self.data_dict:
@@ -150,7 +154,8 @@ class yads:
             '''
             raise KeyDoesNotExistException
 
-        if int(time.time()) >= self.data_dict[key][0]:
+        if self.data_dict[key][0] is not None and int(
+                time.time()) >= self.data_dict[key][0]:
             '''
             checks if the key does not expire,
             if the key got expired it raises an Exception
@@ -166,7 +171,7 @@ class yads:
     def delete(self, key):
         '''
         finds the key and deletes it from the data store 
-        :param key:
+        :param key: example name
         :return: returns nothing
         '''
         if key not in self.data_dict:
@@ -175,7 +180,8 @@ class yads:
             '''
             raise KeyDoesNotExistException
 
-        if int(time.time()) >= self.data_dict[key][0]:
+        if self.data_dict[key][0] is not None and int(
+                time.time()) >= self.data_dict[key][0]:
             '''
             checks if the key does not expire,
             if the key got expired it raises an Exception.
@@ -190,23 +196,23 @@ class yads:
         self.data_thread_lock.release()
         print("key is deleted")
 
-    def check_dict_size_within_limits(self):                                                                      
+    def check_dict_size_within_limits(self):
         if sys.getsizeof(self.data_dict) <= 1e+9:
             return True
         else:
-            return False 
+            return False
 
-    def check_file_size(self):                                                                      
+    def check_file_size(self):
         if os.path.getsize(self.file_path) <= 1e+9:
             return True
         else:
-            return False   
+            return False
 
     def is_json(self, myjson):
         '''
         checks if the given value is in json format
-        :param myjson:
-        :return: Boolean value
+        :param myjson: json value
+        :return: Boolean
         '''
         try:
             json_object = json.loads(myjson)
